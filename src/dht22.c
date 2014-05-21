@@ -32,6 +32,7 @@ dht_is_ready() {
 
 uint8_t*
 dht_get_data() {
+  while (dht_current_state != DHT_READY);
   return dht_data.bytes;
 }
 

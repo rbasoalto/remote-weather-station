@@ -4,8 +4,8 @@
 #include "dht22.h"
 #include "msprf24.h"
 
+#ifdef UART_DEBUG
 char txbuf[256];
-
 void uart_setup() {
   UCA0CTL0 = 0;
   UCA0CTL1 |= UCSWRST; // Put USCI in reset mode
@@ -17,7 +17,6 @@ void uart_setup() {
 	P1SEL2 |= (BIT1 + BIT2); // Set pins for USCI
 	P1SEL |= (BIT1 + BIT2);
 }
-
 void uart_send(int len) {
   int i;
   for(i = 0; i < len; i++) {
@@ -25,6 +24,7 @@ void uart_send(int len) {
     UCA0TXBUF = txbuf[i];
   }
 }
+#endif
 
 void radio_setup() {
   uint8_t addr[] = {0xDE, 0xAD, 0x00, 0xBE, 0xEF};
@@ -46,7 +46,8 @@ void radio_setup() {
 void verylongdelay() {
   TA0CCR0 = 4096;
   TA0CCTL0 |= CCIE;
-  TA0CTL = TASSEL_1 | ID_3 | MC_1; // ACLK/8 (4.096 khz), up to CCR0
+  TA0CTL = TACLR;
+  TA0CTL = TASSEL_1 | ID_3 | MC_1; // ACLK/8 (4096 hz), up to CCR0
   LPM3;
 }
 
@@ -69,35 +70,51 @@ int main() {
   P1OUT &= ~BIT0;
 
   _BIS_SR(GIE);
+#ifdef UART_DEBUG
   uart_setup();
   uart_send(sprintf(txbuf, "Hello! Starting up...\r\n"));
+#endif
   radio_setup();
+#ifdef UART_DEBUG
   uart_send(sprintf(txbuf, "Radio is ready...\r\n"));
+#endif
 
   while(1) {
     P1OUT &= ~BIT0;
     verylongdelay();
+#ifdef UART_DEBUG
     uart_send(sprintf(txbuf, "Starting read\r\n"));
+#endif
     dht_start_read();
+#ifdef UART_DEBUG
     int t = dht_get_temp();
     int h = dht_get_rh();
     uart_send(sprintf(txbuf, "%3d.%1d C; %3d.%1d %%RH\r\n", t/10, t%10, h/10, h%10));
+#endif
     memcpy(buf, dht_get_data(), 5);
     w_tx_payload(5, buf);
     msprf24_activate_tx();
+#ifdef UART_DEBUG
     uart_send(sprintf(txbuf, "Message TX started\r\n"));
+#endif
     LPM0;
+#ifdef UART_DEBUG
     uart_send(sprintf(txbuf, "Interrupt received!\r\n"));
+#endif
     if (rf_irq & RF24_IRQ_FLAGGED) {
       rf_irq &= ~RF24_IRQ_FLAGGED;
       msprf24_get_irq_reason();
       if (rf_irq & RF24_IRQ_TX) {
         P1OUT &= ~BIT0;
+#ifdef UART_DEBUG
         uart_send(sprintf(txbuf, "TX Success!\r\n"));
+#endif
       }
       if(rf_irq & RF24_IRQ_TXFAILED) {
         P1OUT |= BIT0;
+#ifdef UART_DEBUG
         uart_send(sprintf(txbuf, "TX Failed!\r\n"));
+#endif
       }
       msprf24_irq_clear(RF24_IRQ_MASK);
     }
