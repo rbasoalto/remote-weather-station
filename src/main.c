@@ -43,6 +43,19 @@ void radio_setup() {
   w_rx_addr(0, addr);
 }
 
+void verylongdelay() {
+  TA0CCR0 = 4096;
+  TA0CCTL0 |= CCIE;
+  TA0CTL = TASSEL_1 | ID_3 | MC_1; // ACLK/8 (4.096 khz), up to CCR0
+  LPM3;
+}
+
+void __attribute__((interrupt (TIMER0_A0_VECTOR)))
+verylongdelayisr() {
+  TA0CTL = TACLR;
+  LPM4_EXIT;
+}
+
 int main() {
   uint8_t buf[32];
 
@@ -50,33 +63,41 @@ int main() {
   DCOCTL = 0;
   BCSCTL1 = CALBC1_16MHZ;
   DCOCTL = CALDCO_16MHZ;
+  BCSCTL3 |= LFXT1S_2;
 
   P1DIR |= BIT0;
   P1OUT &= ~BIT0;
 
   _BIS_SR(GIE);
-
   uart_setup();
+  uart_send(sprintf(txbuf, "Hello! Starting up...\r\n"));
   radio_setup();
+  uart_send(sprintf(txbuf, "Radio is ready...\r\n"));
 
   while(1) {
+    P1OUT &= ~BIT0;
+    verylongdelay();
+    uart_send(sprintf(txbuf, "Starting read\r\n"));
     dht_start_read();
-    LPM0;
     int t = dht_get_temp();
     int h = dht_get_rh();
     uart_send(sprintf(txbuf, "%3d.%1d C; %3d.%1d %%RH\r\n", t/10, t%10, h/10, h%10));
     memcpy(buf, dht_get_data(), 5);
     w_tx_payload(5, buf);
     msprf24_activate_tx();
-    LPM4;
+    uart_send(sprintf(txbuf, "Message TX started\r\n"));
+    LPM0;
+    uart_send(sprintf(txbuf, "Interrupt received!\r\n"));
     if (rf_irq & RF24_IRQ_FLAGGED) {
       rf_irq &= ~RF24_IRQ_FLAGGED;
       msprf24_get_irq_reason();
       if (rf_irq & RF24_IRQ_TX) {
         P1OUT &= ~BIT0;
+        uart_send(sprintf(txbuf, "TX Success!\r\n"));
       }
       if(rf_irq & RF24_IRQ_TXFAILED) {
         P1OUT |= BIT0;
+        uart_send(sprintf(txbuf, "TX Failed!\r\n"));
       }
       msprf24_irq_clear(RF24_IRQ_MASK);
     }
