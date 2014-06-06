@@ -3,10 +3,13 @@
 #include <string.h>
 #include "dht22.h"
 #include "msprf24.h"
+#include "tm.h"
+
 
 #ifdef UART_DEBUG
+#define DEBUGMSG(x) (uart_send(x))
 char txbuf[256];
-void uart_setup() {
+inline void uart_setup() {
   UCA0CTL0 = 0;
   UCA0CTL1 |= UCSWRST; // Put USCI in reset mode
   UCA0CTL1 = UCSSEL_2 | UCSWRST; // Use SMCLK, still reset
@@ -24,6 +27,9 @@ void uart_send(int len) {
     UCA0TXBUF = txbuf[i];
   }
 }
+#else
+#define DEBUGMSG(x) ((void)0)
+inline void uart_setup() {}
 #endif
 
 void radio_setup() {
@@ -70,51 +76,52 @@ int main() {
   P1OUT &= ~BIT0;
 
   _BIS_SR(GIE);
-#ifdef UART_DEBUG
   uart_setup();
-  uart_send(sprintf(txbuf, "Hello! Starting up...\r\n"));
-#endif
+  DEBUGMSG(sprintf(txbuf, "Hello! Starting up...\r\n"));
   radio_setup();
-#ifdef UART_DEBUG
-  uart_send(sprintf(txbuf, "Radio is ready...\r\n"));
+  DEBUGMSG(sprintf(txbuf, "Radio is ready...\r\n"));
+#ifdef WITH_TM_1638
+  tm_init(0x08);
 #endif
-
   while(1) {
     P1OUT &= ~BIT0;
     verylongdelay();
-#ifdef UART_DEBUG
-    uart_send(sprintf(txbuf, "Starting read\r\n"));
-#endif
+    DEBUGMSG(sprintf(txbuf, "Starting read\r\n"));
     dht_start_read();
-#ifdef UART_DEBUG
     int t = dht_get_temp();
     int h = dht_get_rh();
-    uart_send(sprintf(txbuf, "%3d.%1d C; %3d.%1d %%RH\r\n", t/10, t%10, h/10, h%10));
+    DEBUGMSG(sprintf(txbuf, "%3d.%1d C; %3d.%1d %%RH\r\n", t/10, t%10, h/10, h%10));
+#ifdef WITH_TM_1638
+    int i;
+    tm_setDigitWithDot(t%10, 3);
+    t/=10;
+    for (i=2; i >= 0; i--) {
+      tm_setDigit(t%10, i);
+      t/=10;
+    }
+    tm_setDigitWithDot(h%10, 7);
+    h/=10;
+    for (i=6; i >= 4; i--) {
+      tm_setDigit(h%10, i);
+      h/=10;
+    }
 #endif
     memcpy(buf, dht_get_data(), 5);
     w_tx_payload(5, buf);
     msprf24_activate_tx();
-#ifdef UART_DEBUG
-    uart_send(sprintf(txbuf, "Message TX started\r\n"));
-#endif
+    DEBUGMSG(sprintf(txbuf, "Message TX started\r\n"));
     LPM0;
-#ifdef UART_DEBUG
-    uart_send(sprintf(txbuf, "Interrupt received!\r\n"));
-#endif
+    DEBUGMSG(sprintf(txbuf, "Interrupt received!\r\n"));
     if (rf_irq & RF24_IRQ_FLAGGED) {
       rf_irq &= ~RF24_IRQ_FLAGGED;
       msprf24_get_irq_reason();
       if (rf_irq & RF24_IRQ_TX) {
         P1OUT &= ~BIT0;
-#ifdef UART_DEBUG
-        uart_send(sprintf(txbuf, "TX Success!\r\n"));
-#endif
+        DEBUGMSG(sprintf(txbuf, "TX Success!\r\n"));
       }
       if(rf_irq & RF24_IRQ_TXFAILED) {
         P1OUT |= BIT0;
-#ifdef UART_DEBUG
-        uart_send(sprintf(txbuf, "TX Failed!\r\n"));
-#endif
+        DEBUGMSG(sprintf(txbuf, "TX Failed!\r\n"));
       }
       msprf24_irq_clear(RF24_IRQ_MASK);
     }
