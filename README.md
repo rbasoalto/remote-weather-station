@@ -9,11 +9,29 @@ You'll need:
 - DHT22 with required pullup resistor
 - nRF24L01 module from your favorite chinese supplier
 
-Connect the data pin of the DHT22 to P2.0 on the Launchpad (that's pin 8 on J1).
-
-Connect the nRF module (guess...)
-
 Build, program, and see the temperature and humidity on your favorite serial console program.
+
+```
+----------------+      +---------------+
+MSP430G2553     |      |    nRF24L01   |
+                |      |               |
+  P1.5/UCB0CLK  |------| SCL           |
+  P1.6/UCB0SOMI |------| MISO          |
+  P1.7/UCB0SIMO |------| MOSI          |
+           P2.0 |------| CE            |
+           P2.1 |------| CSN           |
+           P2.2 |------| IRQ           |
+                |      +---------------+
+                |
+                |   ^ VCC
+                |   |
+                |   |  +---------+
+                |  R1k |  DHT22  |
+                |   |  |         |
+    P2.3/TA1.0B |---+--| DATA    |
+                |      +---------+
+----------------+
+```
 
 # License
 
