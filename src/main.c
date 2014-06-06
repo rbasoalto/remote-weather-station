@@ -50,7 +50,7 @@ void radio_setup() {
 }
 
 void verylongdelay() {
-  TA0CCR0 = 4096;
+  TA0CCR0 = 40960; // About 10sec
   TA0CCTL0 |= CCIE;
   TA0CTL = TACLR;
   TA0CTL = TASSEL_1 | ID_3 | MC_1; // ACLK/8 (4096 hz), up to CCR0
@@ -65,6 +65,7 @@ verylongdelayisr() {
 
 int main() {
   uint8_t buf[32];
+  uint8_t is_first_tx = 1;
 
   WDTCTL = WDTPW | WDTHOLD;
   DCOCTL = 0;
@@ -84,8 +85,13 @@ int main() {
   tm_init(0x08);
 #endif
   while(1) {
-    P1OUT &= ~BIT0;
-    verylongdelay();
+    if (is_first_tx) {
+      is_first_tx = 0;
+    } else {
+      msprf24_powerdown();
+      P1OUT &= ~BIT0;
+      verylongdelay();
+    }
     DEBUGMSG(sprintf(txbuf, "Starting read\r\n"));
     dht_start_read();
     int t = dht_get_temp();
@@ -107,10 +113,11 @@ int main() {
     }
 #endif
     memcpy(buf, dht_get_data(), 5);
+    msprf24_standby();
     w_tx_payload(5, buf);
     msprf24_activate_tx();
     DEBUGMSG(sprintf(txbuf, "Message TX started\r\n"));
-    LPM0;
+    LPM4;
     DEBUGMSG(sprintf(txbuf, "Interrupt received!\r\n"));
     if (rf_irq & RF24_IRQ_FLAGGED) {
       rf_irq &= ~RF24_IRQ_FLAGGED;
